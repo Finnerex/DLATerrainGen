@@ -1,0 +1,66 @@
+// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel Blur
+#pragma kernel Upscale
+
+// Create a RenderTexture with enableRandomWrite flag and set it
+// with cs.SetTexture
+Texture2D<float> Input;
+RWTexture2D<float> Output;
+
+int BlurSize;
+
+[numthreads(8,8,1)]
+void Blur(uint3 id : SV_DispatchThreadID) { 
+    uint width, height;
+    Input.GetDimensions(width, height);
+
+    float sum = 0;
+    uint count = 0;
+
+    for (int y = -BlurSize; y <= BlurSize; y++)
+    for (int x = -BlurSize; x <= BlurSize; x++) {
+        int nx = id.x + x;
+        int ny = id.y + y;
+
+        if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
+
+        sum += Input[uint2(nx, ny)];
+        count++;
+
+    }
+
+    Output[uint2(id.x, id.y)] = sum / count;
+
+}
+
+[numthreads(8,8,1)]
+void Upscale(uint3 id : SV_DispatchThreadID) {
+    uint width, height;
+    Input.GetDimensions(width, height);
+
+    uint newWidth = width * 2;
+    uint newHeight = height * 2;
+
+    if (id.x >= newWidth || id.y >= newHeight)
+        return;
+
+    uint x = id.x / 2;
+    uint y = id.y / 2;
+
+    float val = Input[uint2(x, y)];
+    float right = (x + 1 < width) ? Input[uint2(x + 1, y)] : val;
+    float bottom = (y + 1 < height) ? Input[uint2(x, y + 1)] : val;
+    float bottomRight = (x + 1 < width && y + 1 < height) ? Input[uint2(x + 1, y + 1)] : val;
+
+    float result;
+    if (id.x % 2 == 0 && id.y % 2 == 0)
+        result = val;
+    else if (id.x % 2 == 1 && id.y % 2 == 0)
+        result = (val + right) / 2;
+    else if (id.x % 2 == 0 && id.y % 2 == 1)
+        result = (val + bottom) / 2;
+    else
+        result = (val + right + bottom + bottomRight) / 4;
+
+    Output[uint2(id.x, id.y)] = result;
+}
